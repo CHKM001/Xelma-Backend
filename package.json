@@ -18,6 +18,7 @@
     "test:db:teardown": "node scripts/teardown-test-db.js",
     "test:db:reset": "node scripts/reset-test-db.js",
     "ci": "npm run lint && npm run build && npm run test:unit:coverage && npm run test:integration",
+    "scorecard": "node scripts/production-readiness-scorecard.js",
     "install-bindings": "node scripts/install-bindings.js",
     "preinstall": "node scripts/install-bindings.js || true",
     "postinstall": "npm run build",

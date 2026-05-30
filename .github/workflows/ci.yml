@@ -30,6 +30,24 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+  scorecard:
+    name: production-readiness scorecard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # No `npm ci`: the scorecard intentionally has zero runtime deps so it
+      # works on fresh forks and runs in seconds.
+      - name: Run production-readiness scorecard
+        run: npm run scorecard
+
   build:
     name: build
     runs-on: ubuntu-latest
