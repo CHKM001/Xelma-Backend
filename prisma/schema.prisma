@@ -73,13 +73,14 @@ model User {
 
 
   // Relations
-  messages       Message[]
-  predictions    Prediction[]
-  rounds         Round[]
-  notifications  Notification[]
-  authChallenges AuthChallenge[]
-  stats          UserStats?
-  transactions   Transaction[]
+  messages            Message[]
+  predictions         Prediction[]
+  rounds              Round[]
+  notifications       Notification[]
+  authChallenges      AuthChallenge[]
+  stats               UserStats?
+  transactions        Transaction[]
+  multiplayerSessions MultiplayerSession[]
 }
 
 model Message {
@@ -205,6 +206,37 @@ model Transaction {
 
   @@index([userId])
   @@index([type])
+}
+
+/// Multiplayer session metadata persisted across socket disconnects.
+///
+/// Powers reconnect continuity (Issue #194): when an authenticated client
+/// reconnects after a transient drop, the server can look up its prior
+/// rooms and resume membership without forcing the client to re-discover
+/// state. Rows are upserted by `userId` (one active session row per user),
+/// so a fresh login transparently replaces a stale row.
+///
+/// Storage notes:
+///   - `rooms` is a JSON-encoded `string[]` of room names the user joined.
+///   - `metadata` is opaque JSON for future per-game state (last round,
+///     pending message, etc.); writers must keep it bounded.
+///   - `disconnectedAt` is null while the session is live; setting it
+///     marks the session as resumable until cleaned up by retention.
+model MultiplayerSession {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletAddress  String
+  socketId       String?
+  rooms          Json     @default("[]")
+  metadata       Json?
+  connectedAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  disconnectedAt DateTime?
+
+  @@unique([userId])
+  @@index([walletAddress])
+  @@index([lastSeenAt])
 }
 
 model RateLimitMetric {

@@ -4,6 +4,7 @@ import { verifyToken } from './utils/jwt.util';
 import { prisma } from './lib/prisma';
 import websocketService from './services/websocket.service';
 import chatService from './services/chat.service';
+import multiplayerSessionService from './services/multiplayer-session.service';
 import { ChatMessage } from './types/chat.types';
 import logger from './utils/logger';
 
@@ -296,6 +297,31 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
     if (socket.userId) {
       socket.join(`user:${socket.userId}`);
       logger.info(`Socket ${socket.id} auto-joined user:${socket.userId}`);
+
+      // Issue #194: persist session metadata for reconnect continuity.
+      // Fire-and-forget; a DB failure must never tear down a live socket.
+      const userIdSnapshot = socket.userId;
+      const walletSnapshot = socket.walletAddress ?? '';
+      multiplayerSessionService
+        .recordConnect({
+          userId: userIdSnapshot,
+          walletAddress: walletSnapshot,
+          socketId: socket.id,
+        })
+        .then((resume) => {
+          // Auto-rejoin rooms the user occupied before the drop. The
+          // client also receives the resume payload so it can update
+          // local UI state without a round-trip.
+          for (const room of resume.rooms) {
+            socket.join(room);
+          }
+          socket.emit('session:resume', resume);
+        })
+        .catch((err) => {
+          logger.warn(
+            `recordConnect failed for socket ${socket.id}: ${(err as Error).message}`,
+          );
+        });
     }
 
     // Join round room for price updates and round events
@@ -303,6 +329,9 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
       socket.join('round');
       logger.info(`Socket ${socket.id} joined room: round`);
       socket.emit('room:joined', { room: 'round' });
+      if (socket.userId) {
+        void multiplayerSessionService.addRoom(socket.userId, 'round');
+      }
     });
 
     // Leave round room
@@ -310,6 +339,9 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
       socket.leave('round');
       logger.info(`Socket ${socket.id} left room: round`);
       socket.emit('room:left', { room: 'round' });
+      if (socket.userId) {
+        void multiplayerSessionService.removeRoom(socket.userId, 'round');
+      }
     });
 
     // Join chat room (requires authentication)
@@ -321,6 +353,7 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
       socket.join('chat');
       logger.info(`Socket ${socket.id} joined room: chat`);
       socket.emit('room:joined', { room: 'chat' });
+      void multiplayerSessionService.addRoom(socket.userId, 'chat');
     });
 
     // Leave chat room
@@ -328,6 +361,9 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
       socket.leave('chat');
       logger.info(`Socket ${socket.id} left room: chat`);
       socket.emit('room:left', { room: 'chat' });
+      if (socket.userId) {
+        void multiplayerSessionService.removeRoom(socket.userId, 'chat');
+      }
     });
 
     // Handle chat message (requires authentication, rate limited, ack-based)
@@ -375,6 +411,15 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
       }
       socket.join(`user:${socket.userId}`);
       socket.emit('room:joined', { room: 'notifications' });
+      void multiplayerSessionService.addRoom(socket.userId, `user:${socket.userId}`);
+    });
+
+    // Issue #194: clients can checkpoint opaque session metadata
+    // (e.g. last-viewed round, draft message) so it survives a reconnect.
+    socket.on('session:checkpoint', (patch: Record<string, unknown>) => {
+      if (!socket.userId) return;
+      if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return;
+      void multiplayerSessionService.patchMetadata(socket.userId, patch);
     });
 
     // -----------------------------------------------------------------------
@@ -384,6 +429,9 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
     socket.on('disconnect', (reason) => {
       connectionRegistry.delete(socket.id);
       logger.info(`Client disconnected: ${socket.id}, reason: ${reason}`);
+      if (socket.userId) {
+        void multiplayerSessionService.recordDisconnect(socket.userId);
+      }
     });
 
     // Handle errors
