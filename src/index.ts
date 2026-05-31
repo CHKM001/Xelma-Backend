@@ -1,6 +1,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { assertPreflightOrExit } from './config/preflight';
 import { createServer, Server as HttpServer } from 'http';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -95,6 +96,9 @@ function logBindingsValidation(): void {
       );
    }
 }
+
+// Run preflight gate before anything else initializes
+assertPreflightOrExit();
 
 // Execute validation immediately
 validateEnv();

@@ -1,6 +1,6 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
-import { verifyToken } from './utils/jwt.util';
+import { verifyToken, verifyTokenDetailed } from './utils/jwt.util';
 import { prisma } from './lib/prisma';
 import websocketService from './services/websocket.service';
 import chatService from './services/chat.service';
@@ -47,6 +47,8 @@ export function getCorsOrigins(): string | string[] {
 interface AuthenticatedSocket extends Socket {
    userId?: string;
    walletAddress?: string;
+   /** Unix epoch (ms) at which the JWT expires. */
+   tokenExpiresAt?: number;
 }
 
 // Standardized ack payloads for chat:send
@@ -108,6 +110,28 @@ export const chatRateLimiter = new SocketRateLimiter(5, 60_000);
 /** How often (ms) the server sends a ping to each connected client. */
 export const PING_INTERVAL = 25_000;
 
+// ---------------------------------------------------------------------------
+// Token refresh / reconnect contract
+// ---------------------------------------------------------------------------
+
+/**
+ * Socket error code emitted when the token supplied at connect-time has
+ * expired.  Clients must:
+ *   1. Obtain a fresh access token via the HTTP auth refresh endpoint.
+ *   2. Disconnect the current socket.
+ *   3. Reconnect with the new token in socket.handshake.auth.token.
+ *
+ * Clients MUST NOT attempt to reuse the same expired token on reconnect.
+ */
+export const AUTH_TOKEN_EXPIRED = 'AUTH_TOKEN_EXPIRED';
+
+/**
+ * Socket error code emitted when the supplied token is structurally invalid
+ * (bad signature, wrong format, unknown issuer). Refreshing is unlikely to
+ * help — the client should re-authenticate from scratch.
+ */
+export const AUTH_TOKEN_INVALID = 'AUTH_TOKEN_INVALID';
+
 /**
  * How long (ms) the server waits for a pong before treating the socket as
  * dead and forcibly disconnecting it.
@@ -132,6 +156,12 @@ export interface ConnectionRecord {
    connectedAt: number;
    /** Updated on every incoming application event and on engine-level pong. */
    lastSeenAt: number;
+   /**
+    * Unix epoch (ms) at which the JWT expires. Present only for authenticated
+    * sockets. Used by the token-expiry checker to proactively notify clients
+    * before the expiry actually occurs.
+    */
+   tokenExpiresAt?: number;
 }
 
 /**
@@ -188,6 +218,46 @@ export function checkStaleConnections(
 }
 
 /**
+ * Scan the registry for authenticated sockets whose JWT has expired and
+ * emit AUTH_TOKEN_EXPIRED so clients can refresh and reconnect cleanly.
+ *
+ * @param io              The Socket.IO server instance.
+ * @param nowMs           Current time in ms (injectable for tests).
+ * @returns Number of sockets notified.
+ */
+export function checkExpiredTokenSockets(
+   io: SocketIOServer,
+   nowMs = Date.now()
+): number {
+   let notified = 0;
+
+   for (const [socketId, record] of connectionRegistry) {
+      if (!record.tokenExpiresAt) continue;
+      if (record.tokenExpiresAt > nowMs) continue;
+
+      logger.warn(
+         `JWT expired for socket ${socketId} (user: ${record.userId ?? 'unknown'})`
+      );
+
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+         socket.emit('auth:error', {
+            code: AUTH_TOKEN_EXPIRED,
+            message:
+               'Your session token has expired. ' +
+               'Refresh your access token and reconnect.',
+         });
+         socket.disconnect(false);
+      } else {
+         connectionRegistry.delete(socketId);
+      }
+      notified++;
+   }
+
+   return notified;
+}
+
+/**
  * Initialize Socket.IO with JWT authentication, heartbeat tracking, and
  * per-user chat rate limiting.
  *
@@ -198,6 +268,21 @@ export function checkStaleConnections(
  * milliseconds. On reconnect the server treats the new socket as a completely
  * fresh connection — clients are responsible for re-joining any rooms they
  * previously occupied.
+ *
+ * ### Token expiry & reconnect flow
+ * When a JWT expires, the server emits an `auth:error` event with
+ * `{ code: "AUTH_TOKEN_EXPIRED" }` and then gracefully disconnects the socket.
+ * Clients MUST:
+ *   1. Listen for `auth:error` events on every authenticated socket.
+ *   2. On `code === "AUTH_TOKEN_EXPIRED"`: call the HTTP token-refresh endpoint
+ *      to obtain a new access token.
+ *   3. Re-create the socket connection supplying the new token in
+ *      `socket.handshake.auth.token`.
+ *   4. Re-join any rooms (e.g. `join:round`, `join:chat`) after reconnect.
+ *
+ * The server also proactively checks for expired tokens every
+ * `PING_INTERVAL` ms so clients receive the notification even if they are
+ * idle and not sending events.
  *
  * ### Multi-instance deployment
  * When REDIS_URL is configured, Socket.IO uses a Redis adapter for room
@@ -237,6 +322,15 @@ export async function initializeSocket(
    );
    staleInterval.unref();
 
+   // Periodic token-expiry check — proactively notify clients whose JWT has
+   // expired so they can refresh and reconnect without waiting for an auth
+   // failure on their next application event.
+   const tokenExpiryInterval = setInterval(
+      () => checkExpiredTokenSockets(io),
+      PING_INTERVAL
+   );
+   tokenExpiryInterval.unref();
+
    // JWT Authentication middleware
    io.use(async (socket: AuthenticatedSocket, next) => {
       try {
@@ -250,11 +344,17 @@ export async function initializeSocket(
             return next();
          }
 
-         const decoded = verifyToken(token);
-         if (!decoded) {
+         const verifyResult = verifyTokenDetailed(token);
+         if (!verifyResult.valid) {
+            if (verifyResult.expired) {
+               logger.warn(`Expired token for socket ${socket.id}`);
+               // AUTH_TOKEN_EXPIRED signals clients to refresh and reconnect.
+               return next(new Error('AUTH_TOKEN_EXPIRED'));
+            }
             logger.warn(`Invalid token for socket ${socket.id}`);
-            return next(new Error('Invalid token'));
+            return next(new Error('AUTH_TOKEN_INVALID'));
          }
+         const decoded = verifyResult.payload;
 
          // Verify user exists
          const user = await prisma.user.findUnique({
@@ -269,6 +369,10 @@ export async function initializeSocket(
          // Attach user info to socket
          socket.userId = user.id;
          socket.walletAddress = user.walletAddress;
+         // Store expiry so the token-expiry checker can proactively disconnect.
+         if ((decoded as any).exp) {
+            socket.tokenExpiresAt = (decoded as any).exp * 1000; // exp is seconds
+         }
 
          logger.info(
             `Authenticated socket connected: ${socket.id}, user: ${user.id}`
@@ -298,6 +402,7 @@ export async function initializeSocket(
          walletAddress: socket.walletAddress,
          connectedAt: Date.now(),
          lastSeenAt: Date.now(),
+         tokenExpiresAt: socket.tokenExpiresAt,
       });
 
       // Announce the heartbeat contract so clients can tune their reconnect
