@@ -68,6 +68,9 @@ jobs:
       - name: Run build
         run: npm run build
 
+      - name: Verify OpenAPI spec generates required routes
+        run: npm run docs:verify
+
   test-unit:
     name: test (unit)
     runs-on: ubuntu-latest

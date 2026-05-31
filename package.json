@@ -24,6 +24,7 @@
       "postinstall": "npm run build",
       "start:render-parity": "NODE_ENV=production node dist/index.js",
       "docs:openapi": "node dist/scripts/generate-openapi.js",
+      "docs:verify": "node scripts/verify-openapi-sync.js",
       "docs:postman": "node dist/scripts/export-postman.js",
       "prisma:generate": "prisma generate",
       "prisma:migrate": "prisma migrate dev"

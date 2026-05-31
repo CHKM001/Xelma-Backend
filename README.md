@@ -316,8 +316,17 @@ Xelma-Backend/
 - **`requireOracle`**: Ensures user has ORACLE role
 
 #### **Rate Limiter Middleware (`rateLimiter.middleware.ts`)**
-- Prevents API abuse by limiting requests per IP
-- Configurable limits per endpoint
+- Prevents API abuse with per-IP and per-user limits
+- Single prediction submit: 10 requests/minute per user
+- Batch prediction submit: **3 requests/minute per user** (stricter; each batch may include up to 50 predictions)
+- Batch leaderboard lookup: 10 requests/minute per user
+- Auth, chat, admin round creation, and oracle resolve endpoints have tailored policies
+- Rate-limit hits are recorded for the admin metrics dashboard (`GET /api/admin/metrics/rate-limits`)
+
+#### **Route Authorization Registry (`src/security/route-auth.registry.ts`)**
+- Canonical list of API routes and required auth levels (`public`, `authenticated`, `admin`, `oracle`)
+- `src/tests/security.spec.ts` and `src/tests/route-auth.registry.spec.ts` fail CI when the registry drifts from implemented routes
+- Role middleware (`requireAdmin`, `requireOracle`, `authenticateUser`) is built on a shared `requireRole` helper in `auth.middleware.ts`
 
 ---
 
@@ -875,7 +884,8 @@ Current test coverage includes:
 | `npm run ci` | Run lint, build, unit coverage, and integration tests |
 | `npm run prisma:generate` | Generate Prisma client |
 | `npm run prisma:migrate` | Run database migrations |
-| `npm run docs:openapi` | Generate OpenAPI JSON spec |
+| `npm run docs:openapi` | Generate OpenAPI JSON spec to `docs/openapi.json` |
+| `npm run docs:verify` | Regenerate OpenAPI and verify required paths are documented (CI gate) |
 | `npm run docs:postman` | Export Postman collection |
 | `npm run scorecard` | Run the production-readiness scorecard (see [#197](https://github.com/TevaLabs/Xelma-Backend/issues/197)) |
 

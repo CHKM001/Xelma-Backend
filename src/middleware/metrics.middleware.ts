@@ -93,6 +93,13 @@ export const circuitBreakerState = new Gauge({
   registers: [metricsRegistry],
 });
 
+export const rateLimitHitsTotal = new Counter({
+  name: 'rate_limit_hits_total',
+  help: 'Total HTTP 429 responses from express-rate-limit handlers',
+  labelNames: ['endpoint', 'category'] as const,
+  registers: [metricsRegistry],
+});
+
 // ---------------------------------------------------------------------------
 // DB / Prisma pool settings (low-cardinality)
 // ---------------------------------------------------------------------------

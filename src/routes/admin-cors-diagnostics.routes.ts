@@ -7,7 +7,7 @@ const router = Router();
 
 /**
  * @openapi
- * /admin/cors-diagnostics:
+ * /api/admin/cors-diagnostics:
  *   get:
  *     summary: Resolved CORS origin allowlist for HTTP and Socket.IO
  *     description: |

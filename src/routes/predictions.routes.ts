@@ -3,7 +3,10 @@ import {
    authenticateUser,
    AuthenticatedRequest,
 } from '../middleware/auth.middleware';
-import { predictionRateLimiter } from '../middleware/rateLimiter.middleware';
+import {
+   batchPredictionRateLimiter,
+   predictionRateLimiter,
+} from '../middleware/rateLimiter.middleware';
 import { validate } from '../middleware/validate.middleware';
 import {
    batchSubmitPredictionsSchema,
@@ -128,6 +131,8 @@ router.post(
  *   post:
  *     tags: [Predictions]
  *     summary: Submit multiple predictions at once
+ *     description: |
+ *       Batch submit up to 50 predictions. Rate limit: **3 batch requests per minute per user** (stricter than single submit). On limit, responds with **429**.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -146,11 +151,17 @@ router.post(
  *     responses:
  *       200:
  *         description: Predictions processed
+ *       429:
+ *         description: Too many batch requests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/RateLimitResponse'
  */
 router.post(
    '/batch-submit',
    authenticateUser,
-   predictionRateLimiter,
+   batchPredictionRateLimiter,
    validate(batchSubmitPredictionsSchema),
    (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {

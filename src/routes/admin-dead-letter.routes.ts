@@ -57,7 +57,7 @@ function parseInt32(raw: unknown, fallback: number): number {
 
 /**
  * @openapi
- * /admin/dead-letter:
+ * /api/admin/dead-letter:
  *   get:
  *     summary: List failed notification/event dispatches
  *     description: |
@@ -85,7 +85,7 @@ router.get('/', requireAdmin, async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /admin/dead-letter/retry-all:
+ * /api/admin/dead-letter/retry-all:
  *   post:
  *     summary: Replay every pending/retrying dispatch in the DLQ
  *     description: Admin only. Returns a counts summary.
@@ -110,7 +110,7 @@ router.post('/retry-all', requireAdmin, async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /admin/dead-letter/{id}/retry:
+ * /api/admin/dead-letter/{id}/retry:
  *   post:
  *     summary: Replay a single DLQ entry
  *     tags:
