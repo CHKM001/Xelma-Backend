@@ -1,11 +1,8 @@
 import { Router } from 'express';
-import { getPrices } from '../services/priceService';
+import pricesRoutes from './prices';
 
 const router = Router();
 
-router.get('/prices', async (req, res) => {
-  const prices = await getPrices();
-  res.json(prices);
-});
+router.use(pricesRoutes);
 
 export default router;
