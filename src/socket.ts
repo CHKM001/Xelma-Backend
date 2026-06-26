@@ -37,7 +37,7 @@ export function getCorsOrigins(): string | string[] {
          'CLIENT_URL not set; allowing all origins for development. ' +
             'Set CLIENT_URL to restrict origins.'
       );
-      return '*';
+      return true;
    }
 
    const additionalOrigins = process.env.ALLOWED_ORIGINS;
@@ -639,6 +639,10 @@ export async function initializeSocket(
 
    logger.info('Socket.IO initialized with JWT authentication');
    return io;
+}
+
+export async function initWebSocket(httpServer: HTTPServer): Promise<void> {
+   await initializeSocket(httpServer);
 }
 
 export default { initializeSocket };
