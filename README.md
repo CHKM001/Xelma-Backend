@@ -10,6 +10,7 @@ TypeScript/Node.js backend for the [Xelma](https://github.com/TevaLabs/Xelma-Blo
 - [Key Features](#key-features)
 - [Project Structure](#project-structure)
 - [Architecture](#architecture)
+  - [Entrypoints](#entrypoints)
   - [Core Services](#core-services)
   - [Routes & Endpoints](#routes--endpoints)
   - [Middleware](#middleware)
@@ -149,6 +150,19 @@ Xelma-Backend/
 ---
 
 ## Architecture
+
+### Entrypoints
+
+The repo has two Express applications. **New contributors should always use `npm run dev`.**
+
+| Script | File | Use when |
+|---|---|---|
+| `npm run dev` | `src/index.ts` | Everyday development — full backend, real DB, WebSocket, Soroban |
+| `npm run dev:hackathon` | `src/server.ts` | Demo without a database — mock data only |
+
+See [docs/architecture.md](docs/architecture.md) for the full architecture decision, file map, migration plan, and a checklist for adding new routes.
+
+---
 
 ### Core Services
 
@@ -586,7 +600,14 @@ npx prisma db seed
 npm run dev
 ```
 
-The server will start on `http://localhost:3000` with auto-reload on file changes.
+Starts the **production app** (`src/index.ts`) on `http://localhost:3001` with auto-reload. This is the right server for all feature work and bug fixes. Requires `.env` with at least `DATABASE_URL` and `JWT_SECRET` (copy `.env.example` to get started).
+
+```bash
+# Demo server — no database required, mock data only
+npm run dev:hackathon
+```
+
+See [docs/architecture.md](docs/architecture.md) for guidance on which server to run.
 
 ### Local Render-Parity Bootstrap
 
@@ -1010,7 +1031,8 @@ At minimum, migration PRs should include:
 | Script | Description |
 |--------|-------------|
 | `npm start` | Run production server (requires build) |
-| `npm run dev` | Start development server with hot-reload |
+| `npm run dev` | Start the **production** development server (`src/index.ts`) with hot-reload — use this for all feature work |
+| `npm run dev:hackathon` | Start the hackathon demo server (`src/server.ts`) — mock data only, no database required |
 | `npm run dev:render-parity` | Generate Prisma client, apply committed migrations, then start dev server |
 | `npm run build` | Compile TypeScript to JavaScript |
 | `npm test` | Run Jest test suite |
