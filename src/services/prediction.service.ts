@@ -327,7 +327,7 @@ export class PredictionService {
                prediction: {
                   id: prediction.id,
                   roundId: prediction.roundId,
-                  amount: prediction.amount,
+                  amount: toDecimalString(prediction.amount),
                   side: prediction.side,
                   priceRange: prediction.priceRange,
                   createdAt: prediction.createdAt,
