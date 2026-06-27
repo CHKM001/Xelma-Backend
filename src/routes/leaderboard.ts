@@ -5,6 +5,23 @@ import { getLeaderboard } from '../services/leaderboard.service';
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/leaderboard:
+ *   get:
+ *     summary: Mock leaderboard rankings
+ *     tags:
+ *       - leaderboard
+ *     responses:
+ *       200:
+ *         description: Top players by rank
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ */
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     if (config.app.dataMode === 'mock') {

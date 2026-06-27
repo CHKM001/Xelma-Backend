@@ -8,6 +8,23 @@ import roundService from '../services/round.service';
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/rounds:
+ *   get:
+ *     summary: List mock prediction rounds
+ *     tags:
+ *       - rounds
+ *     responses:
+ *       200:
+ *         description: Active and upcoming mock rounds
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ */
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (config.app.dataMode === 'mock') {

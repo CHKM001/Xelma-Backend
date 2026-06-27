@@ -4,6 +4,23 @@ import { getPlatformStats } from "../services/stats.service";
 const router = Router();
 
 /**
+ * @openapi
+ * /api/stats:
+ *   get:
+ *     summary: Platform statistics
+ *     description: Returns aggregated platform counters for the landing page.
+ *     tags:
+ *       - stats
+ *     responses:
+ *       200:
+ *         description: Platform stats
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PlatformStatsResponse'
+ *       500:
+ *         description: Failed to retrieve stats
+ *
  * GET /api/stats
  *
  * Returns aggregated platform counters for the landing page.

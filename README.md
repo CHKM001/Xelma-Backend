@@ -446,6 +446,41 @@ This will automatically:
 - Install all dependencies including `@tevalabs/xelma-bindings`
 - Run `postinstall` script to build the TypeScript code
 
+### 3. One-Command Local Infra (Docker Compose)
+
+For contributors running **full backend mode** with PostgreSQL (and optional Redis), use Docker Compose:
+
+```bash
+cp .env.docker.example .env
+# Edit .env and set JWT_SECRET at minimum
+
+docker compose up --build
+```
+
+| Service | Port | Health check |
+| --- | --- | --- |
+| API | `3000` | `GET http://localhost:3000/health` |
+| PostgreSQL | `5432` | `pg_isready -U xelma -d xelma` |
+| Redis (optional) | `6379` | `redis-cli ping` |
+
+The API container runs `prisma migrate deploy` on startup before booting `dist/index.js`.
+
+To include Redis (for Socket.IO adapter / distributed locks):
+
+```bash
+docker compose --profile full up --build
+```
+
+**Troubleshooting Docker setup**
+
+| Symptom | Fix |
+| --- | --- |
+| `api` exits immediately | Ensure `.env` exists and `JWT_SECRET` is set |
+| `Can't reach database server` | Wait for `postgres` health check to pass; confirm `DATABASE_URL` uses host `postgres` inside Compose |
+| Port `3000` already in use | Change `PORT` in `.env` and map `3001:3001` (or similar) in `docker-compose.yml` |
+| Migrations fail on first boot | Run `docker compose logs api`; verify Postgres is healthy with `docker compose ps` |
+| Redis connection warnings | Start with `--profile full` or unset `REDIS_URL` for API-only local mode |
+
 ---
 
 ## Environment Setup
