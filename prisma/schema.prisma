@@ -82,6 +82,13 @@ enum OutboxEventStatus {
   FAILED
 }
 
+enum TournamentStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
 // =======================
 // Models
 // =======================
@@ -112,6 +119,43 @@ model User {
   stats               UserStats?
   transactions        Transaction[]
   multiplayerSessions MultiplayerSession[]
+  tournamentParticipants TournamentParticipant[]
+}
+
+model Tournament {
+  id                String                      @id @default(uuid())
+  name              String
+  description       String
+  mode              GameMode
+  status            TournamentStatus            @default(UPCOMING)
+  entryFee          Decimal                     @db.Decimal(20, 8)
+  prizePool         Decimal                     @db.Decimal(20, 8)
+  maxParticipants   Int
+  currentParticipants Int                     @default(0)
+  startTime         DateTime
+  endTime           DateTime
+  rounds            Int                         @default(1)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  participants TournamentParticipant[]
+
+  @@index([status])
+  @@index([mode])
+}
+
+model TournamentParticipant {
+  id           String     @id @default(uuid())
+  tournamentId String
+  userId       String
+  joinedAt     DateTime   @default(now())
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId])
+  @@index([userId])
 }
 
 model Message {

@@ -1,6 +1,9 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { validate } from "../middleware/validate.middleware";
+import { authenticateUser, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { offsetPaginationSchema } from "../schemas/pagination.schema";
+import { joinTournamentParamsSchema } from "../schemas/tournament.schema";
+import tournamentService from "../services/tournament.service";
 
 const router = Router();
 
@@ -117,5 +120,33 @@ router.get("/:id", (req: Request, res: Response, next: NextFunction) => {
 
   return res.json({ success: true, data: tournament });
 });
+
+/**
+ * POST /api/tournaments/:id/join
+ * Join a tournament (authenticated).
+ */
+router.post(
+  "/:id/join",
+  authenticateUser,
+  validate(joinTournamentParamsSchema, "params"),
+  (async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user.userId;
+      const { id } = req.params;
+
+      const result = await tournamentService.joinTournament(userId, id);
+
+      res.json({
+        success: true,
+        data: {
+          tournamentId: id,
+          currentParticipants: result.currentParticipants,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }) as any,
+);
 
 export default router;
