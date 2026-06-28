@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import {
   getJsonFromCache,
   invalidateLeaderboardSortedSet,
+  invalidateNamespace,
   setJsonToCache,
   zsetCard,
   zsetRangeWithScores,
@@ -13,7 +14,7 @@ import {
   LeaderboardCursorResponse,
   LeaderboardResponse,
 } from "../types/leaderboard.types";
-import { toDecimal, toNumber } from "../utils/decimal.util";
+import { toDecimal, toNumber, toDecimalString } from "../utils/decimal.util";
 import {
   buildCursorMeta,
   buildOffsetMeta,
@@ -237,6 +238,23 @@ export async function getLeaderboardCursor(
   cursor?: string,
   userId?: string,
 ): Promise<LeaderboardCursorResponse> {
+  const rawKey = `limit=${limit}:cursor=${cursor ?? "none"}:user=${userId ?? "anon"}`;
+
+  type LeaderboardCursorCachePayload = Omit<LeaderboardCursorResponse, "lastUpdated">;
+
+  // Try versioned JSON cache first
+  const cached = await getJsonFromCache<LeaderboardCursorCachePayload>(
+    LEADERBOARD_CACHE_NAMESPACE,
+    rawKey,
+  );
+
+  if (cached) {
+    return {
+      ...cached,
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+
   const decoded = decodeCursor<{ totalEarnings: string; userId: string }>(cursor);
 
   // Fetch limit+1 rows for the sentinel trick
@@ -277,45 +295,31 @@ export async function getLeaderboardCursor(
 
   const pageStats = trimSentinel(userStats, limit);
 
-  const leaderboard: LeaderboardEntry[] = pageStats.map((stat, index) => ({
-    rank: rankOffset + index + 1,
-    userId: stat.user.id,
-    walletAddress: maskWalletAddress(stat.user.walletAddress),
-    totalEarnings: toNumber(stat.totalEarnings),
-    totalPredictions: stat.totalPredictions,
-    accuracy: calculateAccuracy(stat.correctPredictions, stat.totalPredictions),
-    modeStats: {
-      upDown: {
-        wins: stat.upDownWins,
-        losses: stat.upDownLosses,
-        earnings: toNumber(stat.upDownEarnings),
-        accuracy: calculateAccuracy(
-          stat.upDownWins,
-          stat.upDownWins + stat.upDownLosses,
-        ),
-      },
-      legends: {
-        wins: stat.legendsWins,
-        losses: stat.legendsLosses,
-        earnings: toNumber(stat.legendsEarnings),
-        accuracy: calculateAccuracy(
-          stat.legendsWins,
-          stat.legendsWins + stat.legendsLosses,
-        ),
-      },
-    },
-  }));
+  const leaderboard: LeaderboardEntry[] = pageStats.map((stat, index) =>
+    buildEntry(stat, rankOffset + index + 1)
+  );
 
   let userPosition: LeaderboardEntry | undefined;
   if (userId) {
     userPosition = await getUserPosition(userId);
   }
 
-  return {
+  const payload: LeaderboardCursorCachePayload = {
     leaderboard,
     userPosition,
-    lastUpdated: new Date().toISOString(),
     pagination,
+  };
+
+  await setJsonToCache(
+    LEADERBOARD_CACHE_NAMESPACE,
+    rawKey,
+    payload,
+    LEADERBOARD_CACHE_TTL_SECONDS,
+  );
+
+  return {
+    ...payload,
+    lastUpdated: new Date().toISOString(),
   };
 }
 
@@ -462,6 +466,7 @@ export async function updateUserStatsForRound(roundId: string): Promise<void> {
 
   // All DB writes are done. Invalidate both cache layers so the next
   // leaderboard read rebuilds from the freshly updated DB rows.
+  void invalidateNamespace("leaderboard").catch(() => {});
   void invalidateLeaderboardSortedSet().catch(() => {
     // Already logged inside invalidateLeaderboardSortedSet.
   });

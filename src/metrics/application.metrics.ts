@@ -6,6 +6,7 @@ import {
    Gauge,
 } from 'prom-client';
 import config from '../config';
+import { getCacheMetrics } from '../lib/redis';
 
 export const metricsRegistry = new Registry();
 
@@ -149,4 +150,69 @@ export const dbPoolSettingsInfo = new Gauge({
          1
       );
    },
+});
+
+export const redisCacheHitsTotal = new Gauge({
+   name: 'redis_cache_hits_total',
+   help: 'Total Redis cache hits',
+   registers: [metricsRegistry],
+   collect() {
+      this.set(getCacheMetrics().hits);
+   }
+});
+
+export const redisCacheMissesTotal = new Gauge({
+   name: 'redis_cache_misses_total',
+   help: 'Total Redis cache misses',
+   registers: [metricsRegistry],
+   collect() {
+      this.set(getCacheMetrics().misses);
+   }
+});
+
+export const redisCacheSetsTotal = new Gauge({
+   name: 'redis_cache_sets_total',
+   help: 'Total Redis cache sets',
+   registers: [metricsRegistry],
+   collect() {
+      this.set(getCacheMetrics().sets);
+   }
+});
+
+export const redisCacheInvalidationsTotal = new Gauge({
+   name: 'redis_cache_invalidations_total',
+   help: 'Total Redis cache invalidations',
+   registers: [metricsRegistry],
+   collect() {
+      this.set(getCacheMetrics().invalidations);
+   }
+});
+
+export const redisCacheBypassesTotal = new Gauge({
+   name: 'redis_cache_bypasses_total',
+   help: 'Total Redis cache bypasses',
+   registers: [metricsRegistry],
+   collect() {
+      this.set(getCacheMetrics().bypasses);
+   }
+});
+
+export const redisCacheErrorsTotal = new Gauge({
+   name: 'redis_cache_errors_total',
+   help: 'Total Redis cache errors',
+   registers: [metricsRegistry],
+   collect() {
+      this.set(getCacheMetrics().errors);
+   }
+});
+
+export const redisCacheHitRatio = new Gauge({
+   name: 'redis_cache_hit_ratio',
+   help: 'Current Redis cache hit ratio (hits / (hits + misses))',
+   registers: [metricsRegistry],
+   collect() {
+      const m = getCacheMetrics();
+      const total = m.hits + m.misses;
+      this.set(total > 0 ? m.hits / total : 0);
+   }
 });
