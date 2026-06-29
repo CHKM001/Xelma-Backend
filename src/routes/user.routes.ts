@@ -134,9 +134,33 @@ router.get("/stats", authenticateUser, (async (req: AuthenticatedRequest, res: R
 }) as any);
 
 /**
+ * Computes an XP score from on-chain user stats.
+ * XP = totalWins × 100 + bestStreak × 50
+ */
+function computeXp(totalWins: number, bestStreak: number): number {
+  return totalWins * 100 + bestStreak * 50;
+}
+
+/**
+ * Derives a rank title from XP.
+ * Thresholds match hackathon profile expectations.
+ */
+function computeRankTitle(xp: number): string {
+  if (xp >= 10000) return "Diamond";
+  if (xp >= 5000) return "Platinum";
+  if (xp >= 3000) return "Gold";
+  if (xp >= 1500) return "Silver";
+  if (xp >= 500) return "Bronze";
+  return "Rookie";
+}
+
+/**
  * GET /api/user/:address/stats
  * Returns on-chain user stats and pending winnings from the Soroban contract.
  * Public endpoint — no authentication required.
+ *
+ * Response includes a `stats` block (existing consumers) and a `profile` block
+ * with hackathon-friendly fields (balance, xp, rankTitle) for the frontend UI.
  */
 router.get(
   "/:address/stats",
@@ -144,9 +168,10 @@ router.get(
     try {
       const { address } = req.params;
 
-      const [contractStats, pendingWinnings] = await Promise.all([
+      const [contractStats, pendingWinnings, balance] = await Promise.all([
         sorobanService.getUserStats(address),
         sorobanService.getPendingWinnings(address),
+        sorobanService.getBalance(address),
       ]);
 
       if (!contractStats) {
@@ -160,8 +185,15 @@ router.get(
             pendingWinnings: "0",
             isRegistered: false,
           },
+          profile: {
+            balance: 0,
+            xp: 0,
+            rankTitle: "Rookie",
+          },
         });
       }
+
+      const xp = computeXp(contractStats.total_wins, contractStats.best_streak);
 
       return res.json({
         success: true,
@@ -172,6 +204,11 @@ router.get(
           currentStreak: contractStats.current_streak,
           pendingWinnings: pendingWinnings.toString(),
           isRegistered: contractStats.total_wins > 0 || contractStats.total_losses > 0,
+        },
+        profile: {
+          balance,
+          xp,
+          rankTitle: computeRankTitle(xp),
         },
       });
     } catch (error) {
